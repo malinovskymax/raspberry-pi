@@ -1,6 +1,6 @@
 require 'rpi_gpio'
 
-LIGHT_PIN = 14
+LIGHT_PIN = 8
 
 SUMMER_MONTHS      = 6..8
 WINTER_LIGHT_HOURS = 7..21
