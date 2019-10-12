@@ -1,3 +1,5 @@
+# Version 1.0.0
+
 require 'rpi_gpio'
 
 LIGHT_PIN = 8
