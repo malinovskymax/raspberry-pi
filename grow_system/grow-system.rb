@@ -1,4 +1,4 @@
-# Version 1.1.1
+# Version 1.1.2
 
 require 'rpi_gpio'
 
@@ -15,14 +15,22 @@ RPi::GPIO.set_numbering :board
 
 RPi::GPIO.setup LIGHT_PIN, as: :output
 
+$light_is_on = false
+
 def light_on
+  return if $light_is_on
+
   RPi::GPIO.send("set_#{RELAY_ON_LEVEL}", LIGHT_PIN)
+  $light_is_on = true
 end
 
 def light_off
+  return unless $light_is_on
+
   off_level = :high
   off_level = :low if RELAY_ON_LEVEL == :high
   RPi::GPIO.send("set_#{off_level}", LIGHT_PIN)
+  $light_is_on = false
 end
 
 def season(time)
