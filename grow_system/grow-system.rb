@@ -1,4 +1,4 @@
-# Version 1.1.0
+# Version 1.1.1
 
 require 'rpi_gpio'
 
@@ -21,11 +21,11 @@ end
 
 def light_off
   off_level = :high
-  off level = :low if RELAY_ON_LEVEL == :high
+  off_level = :low if RELAY_ON_LEVEL == :high
   RPi::GPIO.send("set_#{off_level}", LIGHT_PIN)
 end
 
-def season(time = Time.now)
+def season(time)
   case time.month
   when SUMMER_MONTHS
     :summer
@@ -38,16 +38,12 @@ def light_hours(season)
   Object.const_get("#{season}_LIGHT_HOURS".upcase)
 end
 
-def light_needed?(time)
+def light_needed?(time = Time.now)
   light_hours(season(time)).include? time.hour
 end
 
 loop do
-  if light_needed?(Time.now)
-    light_on
-  else
-    light_off
-  end
+  light_needed? ? light_on : light_off
 
   sleep(1000)
 end
