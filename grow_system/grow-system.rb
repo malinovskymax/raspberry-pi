@@ -1,4 +1,4 @@
-# Version 1.1.2
+# Version 1.1.3
 
 require 'rpi_gpio'
 
@@ -53,5 +53,5 @@ end
 loop do
   light_needed? ? light_on : light_off
 
-  sleep(1000)
+  sleep(1)
 end
