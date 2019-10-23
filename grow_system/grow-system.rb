@@ -1,4 +1,4 @@
-# Version 1.1.3
+# Version 1.2.3
 
 require 'rpi_gpio'
 
@@ -6,9 +6,15 @@ require 'rpi_gpio'
 LIGHT_PIN      = 8
 RELAY_ON_LEVEL = :low
 
-SUMMER_MONTHS      = 6..8
-WINTER_LIGHT_HOURS = 7..21
-SUMMER_LIGHT_HOURS = [7, 8, 9, 10, 11, 12, 13, 20, 21]
+AUTUMN_MONTHS = 9..11
+WINTER_MONTHS = [12, 1, 2]
+SPRING_MONTHS = 3..5
+SUMMER_MONTHS = 6..8
+
+AUTUMN_LIGHT_HOURS = [6, 7, 8, 9, 10, 11, 12, 17, 18, 19, 20]
+WINTER_LIGHT_HOURS = 6..20
+SPRING_LIGHT_HOURS = [6, 7, 8, 9, 10, 11, 12, 17, 18, 19, 20]
+SUMMER_LIGHT_HOURS = [6, 7, 8, 9, 10, 20]
 # settings end
 
 RPi::GPIO.set_numbering :board
@@ -35,10 +41,16 @@ end
 
 def season(time)
   case time.month
+  when AUTUMN_MONTHS
+    :autumn
+  when WINTER_MONTHS
+    :winter
+  when SPRING_MONTHS
+    :spring
   when SUMMER_MONTHS
     :summer
   else
-    :winter
+    raise "current month number: #{time.month} does not belong to any season"
   end
 end
 
