@@ -50,7 +50,7 @@ def season(time)
   when SUMMER_MONTHS
     :summer
   else
-    raise "current month number: #{time.month} does not belong to any season"
+    raise "current month number: #{time.month} does not belong to any season defined in the `settings` section"
   end
 end
 
