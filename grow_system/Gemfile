@@ -5,5 +5,5 @@ ruby '2.6.5'
 gem 'rpi_gpio'
 
 group :test do
-  gem 'rspec-core'
+  gem 'rspec'
 end
