@@ -1,0 +1,8 @@
+language: ruby
+rvm:
+  - 2.6.5
+gemfile:
+  - grow_system/Gemfile
+before_install: 'cp -R grow_system/* . && cp grow_system/.rspec .'
+install: bundle install
+script: rspec spec
