@@ -54,7 +54,7 @@ class LightControl
     return :spring if @spring_months.include? month
     return :summer if @summer_months.include? month
 
-    raise "month number: #{month} does not belong to any season defined in the settings.rb"
+    raise "month number: #{month} does not belong to any season defined in the options"
   end
 
   def light_hours(season)

@@ -157,7 +157,7 @@ RSpec.describe 'LightControl' do
     end
 
     it 'raises an error if given month number does not belong to any season' do
-      expect { instance.send(:season, 0) }.to raise_error('month number: 0 does not belong to any season defined in the settings.rb')
+      expect { instance.send(:season, 0) }.to raise_error('month number: 0 does not belong to any season defined in the options')
     end
   end
 
