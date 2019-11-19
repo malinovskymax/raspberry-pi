@@ -24,6 +24,14 @@ RSpec.describe 'LightControl' do
       expect(instance.instance_variable_get('@relay_on_level')).to eq(:low)
     end
 
+    it '@external_light_sensor defaults to false' do
+      expect(instance.instance_variable_get('@external_light_sensor')).to eq(false)
+    end
+
+    it '@external_light_sensor_pin defaults to 10' do
+      expect(instance.instance_variable_get('@external_light_sensor_pin')).to eq(10)
+    end
+
     it '@autumn_months is an equivavlen of [9, 10, 11]' do
       expect(instance.instance_variable_get('@autumn_months').to_a.sort).to eq([9, 10, 11])
     end
@@ -61,6 +69,8 @@ RSpec.describe 'LightControl' do
     it 'accepts GPIO interface and configuration hash' do
       light_controller = LightControl.new(gpio, light_pin: 1,
                                                 relay_on_level: :high,
+                                                external_light_sensor: true,
+                                                external_light_sensor_pin: 12,
                                                 autumn_months: 1..2,
                                                 winter_months: 3..4,
                                                 spring_months: 5..6,
@@ -68,11 +78,14 @@ RSpec.describe 'LightControl' do
                                                 autumn_light_hours: 9..10,
                                                 winter_light_hours: 11..12,
                                                 spring_light_hours: 13..14,
-                                                summer_light_hours: 15..16)
+                                                summer_light_hours: 15..16,)
 
       expect(light_controller.instance_variable_get('@gpio')).to eql(gpio)
 
       expect(light_controller.instance_variable_get('@light_pin')).to eq(1)
+
+      expect(light_controller.instance_variable_get('@external_light_sensor')).to eq(true)
+      expect(light_controller.instance_variable_get('@external_light_sensor_pin')).to eq(12)
 
       expect(light_controller.instance_variable_get('@autumn_months')).to eq(1..2)
       expect(light_controller.instance_variable_get('@winter_months')).to eq(3..4)
@@ -157,23 +170,73 @@ RSpec.describe 'LightControl' do
     end
   end
 
+  describe '#enough_external_light?' do
+    let(:external_light_sensor_pin) { instance.instance_variable_get('@external_light_sensor_pin') }
+
+    it 'returns true if external light sensor detects enough light' do
+      expect(gpio).to receive(:high?).with(external_light_sensor_pin).and_return(true)
+
+      expect(instance.send(:enough_external_light?)).to eq(true)
+    end
+
+    it 'returns false if external light sensor does not detect enough light' do
+      expect(gpio).to receive(:high?).with(external_light_sensor_pin).and_return(false)
+
+      expect(instance.send(:enough_external_light?)).to eq(false)
+    end
+  end
+
   describe '#light_needed?' do
-    it 'returns true if light must be turned on at a given time, otherwise returns false' do
-      expect(instance.send(:light_needed?, Time.parse('2019-9-7 6:57:33'))).to eq(true)
-      expect(instance.send(:light_needed?, Time.parse('2019-9-7 5:57:33'))).to eq(false)
-      expect(instance.send(:light_needed?, Time.parse('2019-9-7 21:57:33'))).to eq(false)
+    context 'without external light sensor' do
+      before { instance.instance_variable_set('@external_light_sensor', false) }
 
-      expect(instance.send(:light_needed?, Time.parse('2019-1-7 9:57:33'))).to eq(true)
-      expect(instance.send(:light_needed?, Time.parse('2019-1-7 4:57:33'))).to eq(false)
-      expect(instance.send(:light_needed?, Time.parse('2019-1-7 22:57:33'))).to eq(false)
+      it 'does not try to get external light level from sensor' do
+        expect(gpio).to_not receive(:high?)
 
-      expect(instance.send(:light_needed?, Time.parse('2019-3-7 12:57:33'))).to eq(true)
-      expect(instance.send(:light_needed?, Time.parse('2019-3-7 3:57:33'))).to eq(false)
-      expect(instance.send(:light_needed?, Time.parse('2019-3-7 23:57:33'))).to eq(false)
+        instance.send(:light_needed?, Time.now)
+      end
 
-      expect(instance.send(:light_needed?, Time.parse('2019-6-7 20:57:33'))).to eq(true)
-      expect(instance.send(:light_needed?, Time.parse('2019-6-7 2:57:33'))).to eq(false)
-      expect(instance.send(:light_needed?, Time.parse('2019-6-7 0:57:33'))).to eq(false)
+      it 'returns true if light must be turned on at a given time, otherwise returns false' do
+        expect(instance.send(:light_needed?, Time.parse('2019-9-7 6:57:33'))).to eq(true)
+        expect(instance.send(:light_needed?, Time.parse('2019-9-7 5:57:33'))).to eq(false)
+        expect(instance.send(:light_needed?, Time.parse('2019-9-7 21:57:33'))).to eq(false)
+  
+        expect(instance.send(:light_needed?, Time.parse('2019-1-7 9:57:33'))).to eq(true)
+        expect(instance.send(:light_needed?, Time.parse('2019-1-7 4:57:33'))).to eq(false)
+        expect(instance.send(:light_needed?, Time.parse('2019-1-7 22:57:33'))).to eq(false)
+  
+        expect(instance.send(:light_needed?, Time.parse('2019-3-7 12:57:33'))).to eq(true)
+        expect(instance.send(:light_needed?, Time.parse('2019-3-7 3:57:33'))).to eq(false)
+        expect(instance.send(:light_needed?, Time.parse('2019-3-7 23:57:33'))).to eq(false)
+  
+        expect(instance.send(:light_needed?, Time.parse('2019-6-7 20:57:33'))).to eq(true)
+        expect(instance.send(:light_needed?, Time.parse('2019-6-7 2:57:33'))).to eq(false)
+        expect(instance.send(:light_needed?, Time.parse('2019-6-7 0:57:33'))).to eq(false)
+      end
+    end
+
+    context 'with exteral light sensor' do
+      before do
+        instance.instance_variable_set('@external_light_sensor', true)
+      end
+
+      let(:external_light_sensor_pin) { instance.instance_variable_get('@external_light_sensor_pin') }
+
+      it 'trys to get external light level from sensor' do
+        expect(gpio).to receive(:high?).with(external_light_sensor_pin)
+
+        instance.send(:light_needed?, Time.now)
+      end
+
+      it 'takes into account if external light sensor detects enough light' do
+        expect(gpio).to receive(:high?).with(external_light_sensor_pin).and_return(true).twice
+        expect(instance.send(:light_needed?, Time.parse('2019-11-19 7:30:0'))).to eq(false)
+        expect(instance.send(:light_needed?, Time.parse('2019-6-7 0:30:0'))).to eq(false)
+
+        expect(gpio).to receive(:high?).with(external_light_sensor_pin).and_return(false).twice
+        expect(instance.send(:light_needed?, Time.parse('2019-11-19 7:30:0'))).to eq(true)
+        expect(instance.send(:light_needed?, Time.parse('2019-6-7 0:30:0'))).to eq(false)
+      end
     end
   end
 end
