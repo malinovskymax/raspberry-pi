@@ -2,12 +2,16 @@ class LightControl
   def initialize(gpio, options = {})
     raise 'nil gpio interace' if gpio.nil?
 
-    @gpio           = gpio
-    @light_pin      = options[:light_pin]      || 8
-    @relay_on_level = options[:relay_on_level] || :low
+    @gpio                      = gpio
+    @light_pin                 = options[:light_pin]                 || 8
+    @relay_on_level            = options[:relay_on_level]            || :low
+    @external_light_sensor     = options[:external_light_sensor]     || false
+    @external_light_sensor_pin = options[:external_light_sensor_pin] || 10
 
     @gpio.set_numbering(:board)
     @gpio.setup(@light_pin, as: :output)
+
+    @gpio.setup(@external_light_sensor_pin, as: :input) if @external_light_sensor
 
     @light_is_on = false
 
@@ -57,7 +61,15 @@ class LightControl
     instance_variable_get("@#{season}_light_hours")
   end
 
+  def enough_external_light?
+    @gpio.high? @external_light_sensor_pin
+  end
+
   def light_needed?(time = Time.now)
-    light_hours(season(time.month)).include? time.hour
+    needed = light_hours(season(time.month)).include? time.hour
+
+    needed &= !enough_external_light? if @external_light_sensor
+
+    needed
   end
 end
