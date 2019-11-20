@@ -32,6 +32,14 @@ RSpec.describe 'LightControl' do
       expect(instance.instance_variable_get('@external_light_sensor_pin')).to eq(10)
     end
 
+    it '@diagnose defaults to false' do
+      expect(instance.instance_variable_get('@diagnose')).to eq(false)
+    end
+
+    it '@diagnose_options is not set by default' do
+      expect(instance.instance_variable_get('@diagnose_options')).to eq(nil)
+    end
+
     it '@autumn_months is an equivavlen of [9, 10, 11]' do
       expect(instance.instance_variable_get('@autumn_months').to_a.sort).to eq([9, 10, 11])
     end
@@ -78,7 +86,11 @@ RSpec.describe 'LightControl' do
                                                 autumn_light_hours: 9..10,
                                                 winter_light_hours: 11..12,
                                                 spring_light_hours: 13..14,
-                                                summer_light_hours: 15..16,)
+                                                summer_light_hours: 15..16,
+                                                diagnose: {
+                                                  enabled: true,
+                                                  abnormal_phase_duration: 17
+                                                })
 
       expect(light_controller.instance_variable_get('@gpio')).to eql(gpio)
 
@@ -86,6 +98,9 @@ RSpec.describe 'LightControl' do
 
       expect(light_controller.instance_variable_get('@external_light_sensor')).to eq(true)
       expect(light_controller.instance_variable_get('@external_light_sensor_pin')).to eq(12)
+
+      expect(light_controller.instance_variable_get('@diagnose')).to eq(true)
+      expect(light_controller.instance_variable_get('@diagnose_options')[:abnormal_phase_duration]).to eq(17)
 
       expect(light_controller.instance_variable_get('@autumn_months')).to eq(1..2)
       expect(light_controller.instance_variable_get('@winter_months')).to eq(3..4)
@@ -118,7 +133,7 @@ RSpec.describe 'LightControl' do
     end
 
     it 'calls GPIO interface and changes light state' do
-      expect(gpio).to receive(:set_low)
+      expect(instance).to receive(:send_gpio_light_on)
       expect { instance.send(:light_on) }.to change { instance.instance_variable_get('@light_is_on') }.from(false).to(true)
     end
   end
@@ -131,7 +146,7 @@ RSpec.describe 'LightControl' do
 
     it 'calls GPIO interface and changes light state' do
       instance.instance_variable_set('@light_is_on', true)
-      expect(gpio).to receive(:set_high)
+      expect(instance).to receive(:send_gpio_light_off)
       expect { instance.send(:light_off) }.to change { instance.instance_variable_get('@light_is_on') }.from(true).to(false)
     end
   end
@@ -186,7 +201,79 @@ RSpec.describe 'LightControl' do
     end
   end
 
+  describe '#diagnose' do
+    before { instance.instance_variable_set('@diagnose_options', { abnormal_phase_duration: 17 }) }
+
+    context 'on first call' do
+      it 'sets instanse variables needed for diagnosis' do
+        expect(instance.instance_variable_get('@diagnose_start_time')).to eq(nil)
+        expect(instance.instance_variable_get('@light_mode_stuck_for_long_time')).to eq(nil)
+        expect(instance.instance_variable_get('@how_many_hours_current_light_mode_lasts')).to eq(nil)
+  
+        instance.send(:diagnose, false)
+  
+        expect(instance.instance_variable_get('@diagnose_start_time')).to be_an_instance_of(Time)
+        expect(instance.instance_variable_get('@light_mode_stuck_for_long_time')).to eq(false)
+        expect(instance.instance_variable_get('@how_many_hours_current_light_mode_lasts')).to eq(0)
+      end
+
+      it 'never calls #send_gpio_light_blink' do
+        expect(instance).to_not receive(:send_gpio_light_blink)
+        instance.send(:diagnose, false)
+      end
+    end
+
+    context 'on subsequent calls' do
+      before { instance.send(:diagnose, false) }
+
+      it 'detects if light mode has not been swithed for a long time' do
+        current_light_mode = instance.instance_variable_get('@light_is_on')
+        instance.instance_variable_set('@diagnose_options', { abnormal_phase_duration: 17 })
+        instance.instance_variable_set('@diagnose_start_time', (DateTime.now - (17 / 24.0)).to_time)
+        allow(instance).to receive(:send_gpio_light_blink)
+        instance.send(:diagnose, current_light_mode)
+        expect(instance.instance_variable_get('@light_mode_stuck_for_long_time')).to eq(true)
+      end
+
+      it 'does not detect problem if light mode changing on the edge of allowed normal period' do
+        current_light_mode = instance.instance_variable_get('@light_is_on')
+        instance.instance_variable_set('@diagnose_options', { abnormal_phase_duration: 17 })
+        instance.instance_variable_set('@diagnose_start_time', (DateTime.now - (17 / 24.0)).to_time)
+        allow(instance).to receive(:send_gpio_light_blink)
+        instance.send(:diagnose, !current_light_mode)
+        expect(instance.instance_variable_get('@light_mode_stuck_for_long_time')).to eq(false)
+      end
+
+      it 'detects if light mode has not been swithed for a long time with no more than 1s precision' do
+        current_light_mode = instance.instance_variable_get('@light_is_on')
+        instance.instance_variable_set('@diagnose_options', { abnormal_phase_duration: 17 })
+        instance.instance_variable_set('@diagnose_start_time', (DateTime.now - (16 / 24.0) - (59 / 1440.0) - (59 / 86400.0)).to_time)
+        allow(instance).to receive(:send_gpio_light_blink)
+        instance.send(:diagnose, !current_light_mode)
+        expect(instance.instance_variable_get('@light_mode_stuck_for_long_time')).to eq(false)
+      end
+
+      it 'blinks light if problem detected' do
+        instance.instance_variable_set('@light_mode_stuck_for_long_time', true)
+        expect(instance).to receive(:send_gpio_light_blink)
+        instance.send(:diagnose, false)
+      end
+    end
+  end
+
   describe '#light_needed?' do
+    it 'call #diagnose if diagnose mode is disabled' do
+      instance.instance_variable_set('@diagnose', false)
+      expect(instance).to_not receive(:diagnose)
+      instance.send(:light_needed?, Time.now)
+    end
+
+    it 'call #diagnose if diagnose mode is enabled' do
+      instance.instance_variable_set('@diagnose', true)
+      expect(instance).to receive(:diagnose)
+      instance.send(:light_needed?, Time.now)
+    end
+
     context 'without external light sensor' do
       before { instance.instance_variable_set('@external_light_sensor', false) }
 
@@ -216,9 +303,7 @@ RSpec.describe 'LightControl' do
     end
 
     context 'with exteral light sensor' do
-      before do
-        instance.instance_variable_set('@external_light_sensor', true)
-      end
+      before { instance.instance_variable_set('@external_light_sensor', true) }
 
       let(:external_light_sensor_pin) { instance.instance_variable_get('@external_light_sensor_pin') }
 
@@ -237,6 +322,29 @@ RSpec.describe 'LightControl' do
         expect(instance.send(:light_needed?, Time.parse('2019-11-19 7:30:0'))).to eq(true)
         expect(instance.send(:light_needed?, Time.parse('2019-6-7 0:30:0'))).to eq(false)
       end
+    end
+  end
+
+  describe '#send_gpio_light_on' do
+    it 'calls GPIO interface' do
+      expect(gpio).to receive(:set_low)
+      instance.send(:send_gpio_light_on)
+    end
+  end
+
+  describe '#send_gpio_light_off' do
+    it 'calls GPIO interface' do
+      expect(gpio).to receive(:set_high)
+      instance.send(:send_gpio_light_off)
+    end
+  end
+
+  describe '#send_gpio_light_blink' do
+    it 'turns light down, up, and down again' do
+      expect(instance).to receive(:sleep).with(0.5).twice
+      expect(instance).to receive(:send_gpio_light_off).twice
+      expect(instance).to receive(:send_gpio_light_on).once
+      instance.send(:send_gpio_light_blink)
     end
   end
 end
