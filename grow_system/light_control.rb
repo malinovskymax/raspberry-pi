@@ -103,7 +103,7 @@ class LightControl
   end
 
   def enough_external_light?
-    @gpio.high? @external_light_sensor_pin
+    @gpio.low? @external_light_sensor_pin
   end
 
   def light_needed?(time = Time.now)
