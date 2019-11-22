@@ -1,6 +1,6 @@
 language: ruby
 rvm:
   - 2.6.5
-before_install: 'cp -R grow_system/* . && cp grow_system/.rspec .'
-install: bundle install
-script: rspec spec
+before_install: cd grow_system
+install: bundle
+script: bundle exec rspec
