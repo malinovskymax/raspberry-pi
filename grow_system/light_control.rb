@@ -1,4 +1,10 @@
+require_relative 'time_helper'
+
 class LightControl
+  include TimeHelper
+
+  REACTION_ON_EXTERNAL_LIGHT_DELAY = 10 # seconds
+
   def initialize(gpio, options = {})
     raise 'nil gpio interace' if gpio.nil?
 
@@ -15,12 +21,18 @@ class LightControl
       @diagnose = false
     end
 
+    @telegram_reporter        = options[:telegram_reporter]        || false
+    @daily_telegram_report    = options[:daily_telegram_report]    || false
+    @resend_telegram_alert_in = options[:resend_telegram_alert_in] || 6 # hours
+
     @gpio.set_numbering(:board)
     @gpio.setup(@light_pin, as: :output)
 
     @gpio.setup(@external_light_sensor_pin, as: :input) if @external_light_sensor
 
     @light_is_on = false
+
+    @daily_report = []
 
     @autumn_months = options[:autumn_months] || (9..11)
     @winter_months = options[:winter_months] || [12, 1, 2]
@@ -34,27 +46,84 @@ class LightControl
   end
 
   def tick
-    light_needed? ? light_on : light_off
+    light_needed = light_needed?
+
+    diagnose(light_needed) if @diagnose
+
+    if @telegram_reporter && @daily_telegram_report
+      collect_daily_report_data(light_needed)
+      send_daily_teleram_report
+    end
+
+    light_needed ? light_on : light_off
   end
 
   private
 
+  def collect_daily_report_data(light_needed)
+    return if light_needed == @light_is_on
+
+    report = <<~EOS
+    Event timestamp: #{Time.now}
+    Light turned #{light_needed ? 'on' : 'off'}
+    EOS
+    report += "External light sensor #{enough_external_light? ? 'detects' : 'does not detect'} enough light\n" if @external_light_sensor
+    @daily_report << report
+  end
+
+  def send_daily_teleram_report
+    @daily_report_start ||= Time.now.day
+
+    day_now = Time.now.day
+
+    return if day_now == @daily_report_start
+
+    @telegram_reporter.send_report(kind: 'daily', text: @daily_report.join("\n"))
+    @daily_report_start = day_now
+    @daily_report = []
+  end
+
+  def send_telegram_alert(text)
+    @telegram_reporter.send_report(kind: 'alert', text: text)
+  end
+
   def diagnose(light_is_on)
-    @diagnose_start_time                     ||= Time.now
-    @light_mode_stuck_for_long_time          ||= false
-    @how_many_hours_current_light_mode_lasts ||= 0
+    @light_switched_at ||= Time.now
 
-    light_state_changed = @light_is_on != light_is_on
+    now = Time.now
+    alerts = {}
 
-    if light_state_changed
-      @how_many_hours_current_light_mode_lasts = 0
+    if @light_is_on != light_is_on
+      @light_switched_at = now
     else
-      @how_many_hours_current_light_mode_lasts = ((Time.now - @diagnose_start_time) / 3_600).to_i
-
-      @light_mode_stuck_for_long_time = true if @how_many_hours_current_light_mode_lasts >= @diagnose_options[:abnormal_phase_duration]
+      if hours_diff(now, @light_switched_at) >= @diagnose_options[:abnormal_phase_duration]
+        alerts[:light_mode_stuck] = <<~EOS
+        Light has been #{@light_is_on ? 'on' : 'off'} from #{@light_switched_at} to #{now}
+        Abnormal phase duration is #{@diagnose_options[:abnormal_phase_duration]} hours
+        Problem detected at #{now}
+        EOS
+      end
     end
 
-    send_gpio_light_blink if @light_mode_stuck_for_long_time
+    send_alerts(alerts)
+  end
+
+  def send_alerts(alerts)
+    @alerts_sent_at ||= {}
+    now = Time.now
+    blinked = false
+
+    alerts.each_pair do |key, text|
+      if @telegram_reporter
+        if @alerts_sent_at[key].nil? || hours_diff(@alerts_sent_at[key], now) >= @resend_telegram_alert_in
+          @alerts_sent_at[key] = now
+          text = "Resending:\n#{text}" if @alerts_sent_at[key]
+          send_telegram_alert(text)
+        end
+      else
+        send_gpio_light_blink unless blinked
+      end
+    end
   end
 
   def light_on
@@ -103,15 +172,19 @@ class LightControl
   end
 
   def enough_external_light?
-    @gpio.low? @external_light_sensor_pin
+    enough_light = @gpio.low? @external_light_sensor_pin
+    if enough_light
+      sleep(REACTION_ON_EXTERNAL_LIGHT_DELAY)
+      enough_light = @gpio.low? @external_light_sensor_pin
+    end
+
+    enough_light
   end
 
   def light_needed?(time = Time.now)
     needed = light_hours(season(time.month)).include? time.hour
 
     needed &= !enough_external_light? if @external_light_sensor
-
-    diagnose(needed) if @diagnose
 
     needed
   end
