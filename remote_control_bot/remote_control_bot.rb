@@ -1,5 +1,11 @@
 Dir.foreach("#{__dir__}/libs/ruby/2.6.0/gems") { |d| $: << "#{__dir__}/libs/ruby/2.6.0/gems/#{d}/lib" }
 
+output = `ps auxxx | grep "remote_control_bot.rb" | grep -v "grep"`
+
+if !output.empty?
+  exit 0
+end
+
 require 'json'
 require 'telegram/bot'
 
