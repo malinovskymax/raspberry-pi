@@ -1,10 +1,8 @@
 Dir.foreach("#{__dir__}/libs/ruby/2.6.0/gems") { |d| $: << "#{__dir__}/libs/ruby/2.6.0/gems/#{d}/lib" }
 
-output = `ps auxxx | grep "grow-system.rb" | grep -v "grep"`
+is_running = `ps auxxx | grep "grow-system.rb" | grep -v "grep" | wc -l`.to_i > 1
 
-if !output.empty?
-  exit 0
-end
+exit 0 if is_running
 
 $: << __dir__
 
