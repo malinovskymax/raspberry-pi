@@ -1,6 +1,6 @@
 Dir.foreach("#{__dir__}/libs/ruby/2.6.0/gems") { |d| $: << "#{__dir__}/libs/ruby/2.6.0/gems/#{d}/lib" }
 
-is_running = `ps auxxx | grep "remote_control_bot.rb" | grep -v "grep" | wc -l`.to_i > 1
+is_running = `ps auxxx | grep "remote_control_bot.rb" | grep -v "grep" | wc -l`.to_i > 2
 
 exit 0 if is_running
 
